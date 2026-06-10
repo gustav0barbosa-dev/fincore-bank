@@ -21,7 +21,7 @@ public class PixEventConsumer {
     @KafkaListener(topics = "${kafka.topics.pix-initiated}", groupId = "transaction-service")
     @Transactional
     public void processPixInitiated(PixEvent event) {
-        log.info("Processando PIX: {}", event.getTransactionId());
+        log.info("Processando PIX iniciado: {}", event.getTransactionId());
 
         PixTransaction txn = pixTransactionRepository
                 .findByTransactionId(event.getTransactionId())
@@ -32,30 +32,25 @@ public class PixEventConsumer {
             return;
         }
 
+        // Idempotência: reentrega do Kafka não reprocessa transação já finalizada
+        if (txn.getStatus() == PixStatus.COMPLETED || txn.getStatus() == PixStatus.FAILED) {
+            log.warn("PIX {} já processado ({}), ignorando mensagem duplicada",
+                    event.getTransactionId(), txn.getStatus());
+            return;
+        }
+
         try {
-            // Simula validação de negócio
             validatePix(event);
 
-            // Atualiza status para PROCESSING
             txn.setStatus(PixStatus.PROCESSING);
             pixTransactionRepository.save(txn);
 
-            // Simula processamento (ex: debitar conta remetente)
-            log.info("Debitando R$ {} da conta {}", event.getAmount(), event.getSenderAccountId());
-
-            // Marca como COMPLETED
-            txn.setStatus(PixStatus.COMPLETED);
-            txn.setReceiverAccountId(event.getReceiverAccountId());
-            pixTransactionRepository.save(txn);
-
-            // Publica evento de conclusão
-            event.setStatus(PixStatus.COMPLETED.name());
-            pixEventProducer.publishPixCompleted(event);
-
-            log.info("PIX concluído com sucesso: {}", event.getTransactionId());
+            // Solicita débito ao account-service via evento Kafka
+            pixEventProducer.publishPixDebitRequested(event);
+            log.info("Débito PIX solicitado ao account-service: {}", event.getTransactionId());
 
         } catch (Exception e) {
-            log.error("Erro ao processar PIX {}: {}", event.getTransactionId(), e.getMessage());
+            log.error("Erro ao iniciar PIX {}: {}", event.getTransactionId(), e.getMessage());
 
             txn.setStatus(PixStatus.FAILED);
             txn.setFailureReason(e.getMessage());
@@ -65,6 +60,51 @@ public class PixEventConsumer {
             event.setFailureReason(e.getMessage());
             pixEventProducer.publishPixFailed(event);
         }
+    }
+
+    @KafkaListener(topics = "${kafka.topics.pix-debit-confirmed}", groupId = "transaction-service")
+    @Transactional
+    public void processDebitConfirmed(PixEvent event) {
+        log.info("Débito confirmado pelo account-service: {}", event.getTransactionId());
+
+        pixTransactionRepository.findByTransactionId(event.getTransactionId())
+                .ifPresentOrElse(txn -> {
+                    if (txn.getStatus() == PixStatus.COMPLETED) {
+                        log.warn("PIX {} já concluído, ignorando confirmação duplicada", event.getTransactionId());
+                        return;
+                    }
+                    txn.setStatus(PixStatus.COMPLETED);
+                    txn.setReceiverAccountId(event.getReceiverAccountId());
+                    pixTransactionRepository.save(txn);
+
+                    event.setStatus(PixStatus.COMPLETED.name());
+                    pixEventProducer.publishPixCompleted(event);
+                    log.info("PIX concluído com sucesso: {}", event.getTransactionId());
+                }, () -> log.error("Transação não encontrada ao confirmar débito: {}",
+                        event.getTransactionId()));
+    }
+
+    @KafkaListener(topics = "${kafka.topics.pix-debit-failed}", groupId = "transaction-service")
+    @Transactional
+    public void processDebitFailed(PixEvent event) {
+        log.warn("Débito rejeitado pelo account-service: {} — {}", event.getTransactionId(),
+                event.getFailureReason());
+
+        pixTransactionRepository.findByTransactionId(event.getTransactionId())
+                .ifPresentOrElse(txn -> {
+                    if (txn.getStatus() == PixStatus.FAILED) {
+                        log.warn("PIX {} já falhou, ignorando falha duplicada", event.getTransactionId());
+                        return;
+                    }
+                    txn.setStatus(PixStatus.FAILED);
+                    txn.setFailureReason(event.getFailureReason());
+                    pixTransactionRepository.save(txn);
+
+                    event.setStatus(PixStatus.FAILED.name());
+                    pixEventProducer.publishPixFailed(event);
+                    log.warn("PIX marcado como falho: {}", event.getTransactionId());
+                }, () -> log.error("Transação não encontrada ao processar falha de débito: {}",
+                        event.getTransactionId()));
     }
 
     private void validatePix(PixEvent event) {

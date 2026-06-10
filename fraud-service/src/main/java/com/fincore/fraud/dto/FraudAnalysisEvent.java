@@ -15,4 +15,5 @@ public class FraudAnalysisEvent {
     private BigDecimal amount;
     private String description;
     private String status;
+    private int transactionCountToday;
 }

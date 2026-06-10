@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
@@ -19,14 +20,14 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<Page<NotificationResponse>> getNotifications(
-            @RequestParam String email,
+            Authentication auth,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(notificationService.getNotifications(email, pageable));
+        return ResponseEntity.ok(notificationService.getNotifications(auth.getName(), pageable));
     }
 
     @GetMapping("/unread-count")
-    public ResponseEntity<Map<String, Long>> unreadCount(@RequestParam String email) {
-        return ResponseEntity.ok(Map.of("count", notificationService.countUnread(email)));
+    public ResponseEntity<Map<String, Long>> unreadCount(Authentication auth) {
+        return ResponseEntity.ok(Map.of("count", notificationService.countUnread(auth.getName())));
     }
 
     @PutMapping("/{id}/read")

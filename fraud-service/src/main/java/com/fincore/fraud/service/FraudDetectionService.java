@@ -3,6 +3,7 @@ package com.fincore.fraud.service;
 import com.fincore.fraud.dto.FraudAlertEvent;
 import com.fincore.fraud.dto.FraudAlertResponse;
 import com.fincore.fraud.dto.FraudAnalysisEvent;
+import com.fincore.fraud.exception.BusinessException;
 import com.fincore.fraud.model.FraudAlert;
 import com.fincore.fraud.model.FraudSeverity;
 import com.fincore.fraud.model.FraudStatus;
@@ -65,15 +66,13 @@ public class FraudDetectionService {
                             event.getAmount()));
         }
 
-        // Regra 3: Muitas transações no dia
-        long todayCount = fraudAlertRepository.countByAccountIdAndCreatedAtAfter(
-                event.getSenderAccountId(), LocalDateTime.now().withHour(0).withMinute(0));
-
-        if (todayCount >= maxDailyTransactions) {
+        // Regra 3: Muitas transações no dia (contador preenchido pelo transaction-service)
+        if (event.getTransactionCountToday() >= maxDailyTransactions) {
             triggeredRules.add("HIGH_FREQUENCY");
             createAlert(event, "HIGH_FREQUENCY", FraudSeverity.CRITICAL,
                     String.format("Conta %d realizou %d transações hoje (limite: %d)",
-                            event.getSenderAccountId(), todayCount, maxDailyTransactions));
+                            event.getSenderAccountId(), event.getTransactionCountToday(),
+                            maxDailyTransactions));
         }
 
         // Regra 4: Chave PIX inválida (começa com números suspeitos)
@@ -135,7 +134,7 @@ public class FraudDetectionService {
     @Transactional
     public FraudAlertResponse resolveAlert(Long id, FraudStatus newStatus) {
         FraudAlert alert = fraudAlertRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Alerta não encontrado: " + id));
+                .orElseThrow(() -> new BusinessException("Alerta não encontrado: " + id));
         alert.setStatus(newStatus);
         if (newStatus == FraudStatus.RESOLVED || newStatus == FraudStatus.FALSE_POSITIVE) {
             alert.setResolvedAt(LocalDateTime.now());

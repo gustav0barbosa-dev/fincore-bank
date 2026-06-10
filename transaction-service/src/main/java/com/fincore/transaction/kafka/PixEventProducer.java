@@ -23,9 +23,17 @@ public class PixEventProducer {
     @Value("${kafka.topics.pix-failed}")
     private String pixFailedTopic;
 
+    @Value("${kafka.topics.pix-debit-requested}")
+    private String pixDebitRequestedTopic;
+
     public void publishPixInitiated(PixEvent event) {
         log.info("Publicando PIX iniciado: {}", event.getTransactionId());
         kafkaTemplate.send(pixInitiatedTopic, event.getTransactionId(), event);
+    }
+
+    public void publishPixDebitRequested(PixEvent event) {
+        log.info("Solicitando débito ao account-service: {}", event.getTransactionId());
+        kafkaTemplate.send(pixDebitRequestedTopic, event.getTransactionId(), event);
     }
 
     public void publishPixCompleted(PixEvent event) {
@@ -34,7 +42,7 @@ public class PixEventProducer {
     }
 
     public void publishPixFailed(PixEvent event) {
-        log.warn("Publicando PIX falhou: {} - {}", event.getTransactionId(), event.getFailureReason());
+        log.warn("Publicando PIX falhou: {} — {}", event.getTransactionId(), event.getFailureReason());
         kafkaTemplate.send(pixFailedTopic, event.getTransactionId(), event);
     }
 }

@@ -16,6 +16,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -45,6 +46,10 @@ public class PixService {
         pixTransactionRepository.save(txn);
         log.info("PIX iniciado: {} de {} para {}", txn.getTransactionId(), senderEmail, request.getReceiverKey());
 
+        LocalDateTime startOfDay = LocalDateTime.now().toLocalDate().atStartOfDay();
+        long countToday = pixTransactionRepository
+                .countBySenderAccountIdAndCreatedAtAfter(request.getSenderAccountId(), startOfDay);
+
         // Publica no Kafka para processamento assíncrono
         PixEvent event = PixEvent.builder()
                 .transactionId(txn.getTransactionId())
@@ -54,6 +59,7 @@ public class PixService {
                 .amount(txn.getAmount())
                 .description(txn.getDescription())
                 .status(PixStatus.PENDING.name())
+                .transactionCountToday((int) countToday)
                 .build();
 
         pixEventProducer.publishPixInitiated(event);

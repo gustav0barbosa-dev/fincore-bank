@@ -27,8 +27,8 @@ public class AccountController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<AccountResponse> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(accountService.getAccount(id));
+    public ResponseEntity<AccountResponse> getById(@PathVariable Long id, Authentication auth) {
+        return ResponseEntity.ok(accountService.getAccount(id, auth.getName()));
     }
 
     @GetMapping("/number/{number}")
@@ -43,14 +43,16 @@ public class AccountController {
 
     @PostMapping("/{id}/deposit")
     public ResponseEntity<AccountResponse> deposit(@PathVariable Long id,
-                                                    @Valid @RequestBody DepositRequest request) {
-        return ResponseEntity.ok(accountService.deposit(id, request));
+                                                    @Valid @RequestBody DepositRequest request,
+                                                    Authentication auth) {
+        return ResponseEntity.ok(accountService.deposit(id, request, auth.getName()));
     }
 
     @GetMapping("/{id}/statement")
     public ResponseEntity<Page<TransactionResponse>> statement(
             @PathVariable Long id,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        return ResponseEntity.ok(accountService.getStatement(id, pageable));
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
+            Authentication auth) {
+        return ResponseEntity.ok(accountService.getStatement(id, pageable, auth.getName()));
     }
 }

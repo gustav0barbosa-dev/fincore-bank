@@ -17,4 +17,5 @@ public class PixEvent {
     private String description;
     private String status;
     private String failureReason;
+    private int transactionCountToday;
 }

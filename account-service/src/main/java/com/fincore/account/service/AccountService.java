@@ -12,14 +12,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.util.List;
-import java.util.Random;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AccountService {
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
@@ -40,8 +43,12 @@ public class AccountService {
         return AccountResponse.from(account);
     }
 
-    public AccountResponse getAccount(Long id) {
-        return AccountResponse.from(findAccountById(id));
+    public AccountResponse getAccount(Long id, String requesterEmail) {
+        Account account = findAccountById(id);
+        if (!account.getOwnerEmail().equals(requesterEmail)) {
+            throw new BusinessException("Acesso negado");
+        }
+        return AccountResponse.from(account);
     }
 
     public AccountResponse getAccountByNumber(String number) {
@@ -55,8 +62,11 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountResponse deposit(Long id, DepositRequest request) {
+    public AccountResponse deposit(Long id, DepositRequest request, String requesterEmail) {
         Account account = findAccountById(id);
+        if (!account.getOwnerEmail().equals(requesterEmail)) {
+            throw new BusinessException("Acesso negado");
+        }
         validateActive(account);
 
         var balanceBefore = account.getBalance();
@@ -70,8 +80,11 @@ public class AccountService {
         return AccountResponse.from(account);
     }
 
-    public Page<TransactionResponse> getStatement(Long id, Pageable pageable) {
-        findAccountById(id);
+    public Page<TransactionResponse> getStatement(Long id, Pageable pageable, String requesterEmail) {
+        Account account = findAccountById(id);
+        if (!account.getOwnerEmail().equals(requesterEmail)) {
+            throw new BusinessException("Acesso negado");
+        }
         return transactionRepository.findByAccountIdOrderByCreatedAtDesc(id, pageable)
                 .map(TransactionResponse::from);
     }
@@ -105,10 +118,30 @@ public class AccountService {
                 .build());
     }
 
+    @Transactional
+    public void debitForPix(Long accountId, BigDecimal amount, String transactionId, String receiverKey) {
+        Account account = findAccountById(accountId);
+        validateActive(account);
+
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new BusinessException("Saldo insuficiente para PIX");
+        }
+
+        var balanceBefore = account.getBalance();
+        account.setBalance(balanceBefore.subtract(amount));
+        accountRepository.save(account);
+
+        saveTransaction(account, TransactionType.PIX_OUT, amount,
+                balanceBefore, account.getBalance(), "PIX para " + receiverKey, transactionId);
+
+        log.info("Débito PIX de {} da conta {} | transactionId: {}",
+                amount, account.getAccountNumber(), transactionId);
+    }
+
     private String generateAccountNumber() {
         String number;
         do {
-            number = String.format("%08d", new Random().nextInt(99999999));
+            number = String.format("%08d", SECURE_RANDOM.nextInt(100_000_000));
         } while (accountRepository.existsByAccountNumber(number));
         return number;
     }
