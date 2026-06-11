@@ -9,9 +9,10 @@ Sistema bancário baseado em microsserviços desenvolvido com Java 21 e Spring B
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        Cliente (curl / Postman)              │
+│              fincore-frontend (React + Vite) :5173           │
+│                     Cliente (curl / Postman)                  │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ HTTP REST
+                           │ HTTP REST (proxy Vite: /auth, /account, /transaction)
           ┌────────────────┼────────────────────┐
           ▼                ▼                    ▼
    ┌─────────────┐  ┌─────────────┐   ┌─────────────────┐
@@ -80,7 +81,18 @@ cp .env.example .env
 
 > Veja o guia completo em [SETUP.md](SETUP.md).
 
-### 3. Suba a infraestrutura (PostgreSQL + Kafka)
+### 3a. Docker (recomendado)
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Acesse http://localhost:5173
+
+### 3b. Manual (sem Docker)
+
+#### Suba a infraestrutura (PostgreSQL + Kafka)
 
 ```bash
 docker compose up -d postgres zookeeper kafka
@@ -146,6 +158,23 @@ cd fraud-service && ./mvnw spring-boot:run
 | `GET` | `/api/v1/notifications` | Listar notificações |
 | `GET` | `/api/v1/notifications/unread-count` | Contador de não lidas |
 | `PUT` | `/api/v1/notifications/{id}/read` | Marcar como lida |
+
+---
+
+## 💻 Frontend
+
+- **Stack:** React 18 + TypeScript + Vite + Tailwind CSS
+- **Páginas:** Login, Dashboard, PIX, Depósito, Extrato
+
+### Como rodar localmente
+
+```bash
+cd fincore-frontend
+npm install
+npm run dev
+```
+
+A aplicação fica disponível em http://localhost:5173, com o proxy do Vite encaminhando `/auth`, `/account` e `/transaction` para os respectivos microsserviços.
 
 ---
 
@@ -252,3 +281,5 @@ O **fraud-service** analisa cada transação PIX com 4 regras:
 ## 👤 Autor
 
 **Gustavo** — [GitHub](https://github.com/gustulodo099-beep)
+
+ADS - FATEC Mogi das Cruzes
