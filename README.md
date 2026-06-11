@@ -71,13 +71,22 @@ git clone https://github.com/gustulodo099-beep/fincore-bank.git
 cd fincore-bank
 ```
 
-### 2. Suba a infraestrutura (PostgreSQL + Kafka)
+### 2. Configure as variáveis de ambiente
+
+```bash
+cp .env.example .env
+# Edite o .env e preencha os valores (especialmente JWT_SECRET e DB_PASSWORD)
+```
+
+> Veja o guia completo em [SETUP.md](SETUP.md).
+
+### 3. Suba a infraestrutura (PostgreSQL + Kafka)
 
 ```bash
 docker compose up -d postgres zookeeper kafka
 ```
 
-### 3. Inicie os microsserviços (em terminais separados)
+### 4. Inicie os microsserviços (em terminais separados)
 
 ```bash
 # auth-service
@@ -97,6 +106,7 @@ cd fraud-service && ./mvnw spring-boot:run
 ```
 
 > **Windows:** Execute os serviços via WSL2 para garantir conectividade com a rede Docker.
+> **IntelliJ:** Configure o arquivo `.env` em Run > Edit Configurations > EnvFile.
 
 ---
 
@@ -143,11 +153,14 @@ cd fraud-service && ./mvnw spring-boot:run
 
 ```
 1. Cliente envia POST /api/v1/pix
-2. transaction-service valida saldo e publica evento no Kafka (pix-initiated)
-3. fraud-service consome o evento e analisa por fraude
-4. transaction-service processa a transferência e publica (pix-completed / pix-failed)
-5. account-service atualiza os saldos
-6. notification-service envia notificação ao remetente
+2. transaction-service persiste a transação e publica pix-initiated no Kafka
+3. fraud-service consome pix-initiated e analisa a transação (paralelo)
+4. transaction-service consome pix-initiated, valida e publica pix-debit-requested
+5. account-service consome pix-debit-requested e debita o saldo real do remetente
+6. account-service publica pix-debit-confirmed (ou pix-debit-failed em caso de erro)
+7. transaction-service consome o resultado: marca COMPLETED ou FAILED
+8. transaction-service publica pix-completed (ou pix-failed)
+9. notification-service consome e cria notificação para o usuário
 ```
 
 ---
@@ -212,11 +225,13 @@ O **fraud-service** analisa cada transação PIX com 4 regras:
 
 ## 🗄️ Bancos de Dados
 
-| Banco | Serviços |
+| Banco | Serviço |
 |---|---|
 | `fincore_auth` | auth-service |
-| `fincore_account` | account-service, notification-service, fraud-service |
+| `fincore_account` | account-service |
 | `fincore_txn` | transaction-service |
+| `fincore_notification` | notification-service |
+| `fincore_fraud` | fraud-service |
 
 ---
 
@@ -224,9 +239,13 @@ O **fraud-service** analisa cada transação PIX com 4 regras:
 
 | Tópico | Produtor | Consumidores |
 |---|---|---|
-| `pix-initiated` | transaction-service | fraud-service |
+| `pix-initiated` | transaction-service | transaction-service, fraud-service |
+| `pix-debit-requested` | transaction-service | account-service |
+| `pix-debit-confirmed` | account-service | transaction-service |
+| `pix-debit-failed` | account-service | transaction-service |
 | `pix-completed` | transaction-service | notification-service |
 | `pix-failed` | transaction-service | notification-service |
+| `fraud-alert` | fraud-service | — |
 
 ---
 
