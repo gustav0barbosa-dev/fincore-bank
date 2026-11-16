@@ -6,8 +6,10 @@ import Login           from './pages/Login';
 import Register        from './pages/Register';
 import Dashboard       from './pages/Dashboard';
 import Pix             from './pages/Pix';
+import PixKeys         from './pages/PixKeys';
 import Deposit         from './pages/Deposit';
 import Statement       from './pages/Statement';
+import Profile         from './pages/Profile';
 import NotFound        from './pages/NotFound';
 
 export default function App() {
@@ -24,8 +26,10 @@ export default function App() {
             <Route element={<Layout />}>
               <Route path="/"          element={<Dashboard />} />
               <Route path="/pix"       element={<Pix />}       />
+              <Route path="/pix-keys"  element={<PixKeys />}   />
               <Route path="/deposit"   element={<Deposit />}   />
               <Route path="/statement" element={<Statement />} />
+              <Route path="/profile"   element={<Profile />}   />
             </Route>
           </Route>
 

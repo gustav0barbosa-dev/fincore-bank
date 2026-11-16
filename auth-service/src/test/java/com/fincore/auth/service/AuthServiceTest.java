@@ -1,9 +1,14 @@
 package com.fincore.auth.service;
 
 import com.fincore.auth.dto.AuthResponse;
+import com.fincore.auth.dto.ChangePasswordRequest;
+import com.fincore.auth.dto.ChangeTransactionPinRequest;
 import com.fincore.auth.dto.LoginRequest;
+import com.fincore.auth.dto.ProfileResponse;
 import com.fincore.auth.dto.RefreshTokenRequest;
 import com.fincore.auth.dto.RegisterRequest;
+import com.fincore.auth.dto.UpdateProfileRequest;
+import com.fincore.auth.dto.ValidateTransactionPinRequest;
 import com.fincore.auth.exception.BusinessException;
 import com.fincore.auth.model.Role;
 import com.fincore.auth.model.User;
@@ -58,7 +63,8 @@ class AuthServiceTest {
         registerRequest.setFullName("Gustavo Silva");
         registerRequest.setEmail("gustavo@fincore.com");
         registerRequest.setPassword("Senha@123");
-        registerRequest.setCpf("12345678901");
+        registerRequest.setCpf("52998224725");
+        registerRequest.setTransactionPin("1234");
 
         loginRequest = new LoginRequest();
         loginRequest.setEmail("gustavo@fincore.com");
@@ -70,6 +76,7 @@ class AuthServiceTest {
                 .email("gustavo@fincore.com")
                 .password("encoded_password")
                 .cpf("12345678901")
+                .transactionPin("encoded_pin")
                 .role(Role.USER)
                 .enabled(true)
                 .build();
@@ -114,7 +121,7 @@ class AuthServiceTest {
     @DisplayName("Deve lançar exceção quando CPF já cadastrado")
     void register_cpfAlreadyExists_throwsException() {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(userRepository.existsByCpf("12345678901")).thenReturn(true);
+        when(userRepository.existsByCpf("52998224725")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.register(registerRequest))
                 .isInstanceOf(BusinessException.class)
@@ -215,5 +222,151 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.refreshToken(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Refresh token inválido ou expirado");
+    }
+
+    // ==================== PERFIL ====================
+
+    @Test
+    @DisplayName("Deve retornar perfil do usuário autenticado")
+    void getProfile_success() {
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+
+        ProfileResponse response = authService.getProfile("gustavo@fincore.com");
+
+        assertThat(response.getEmail()).isEqualTo("gustavo@fincore.com");
+        assertThat(response.getFullName()).isEqualTo("Gustavo Silva");
+        assertThat(response.isTransactionPinConfigured()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Deve atualizar nome e telefone do perfil")
+    void updateProfile_success() {
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setFullName("  Gustavo Souza  ");
+        request.setPhone("(11) 99999-9999");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        ProfileResponse response = authService.updateProfile("gustavo@fincore.com", request);
+
+        assertThat(response.getFullName()).isEqualTo("Gustavo Souza");
+        assertThat(response.getPhone()).isEqualTo("11999999999");
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar telefone inválido ao atualizar perfil")
+    void updateProfile_invalidPhone_throwsException() {
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setFullName("Gustavo Souza");
+        request.setPhone("123");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.updateProfile("gustavo@fincore.com", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Telefone inválido");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    // ==================== ALTERAÇÃO DE SENHA ====================
+
+    @Test
+    @DisplayName("Deve alterar senha quando senha atual confere")
+    void changePassword_success() {
+        ChangePasswordRequest request = new ChangePasswordRequest();
+        request.setCurrentPassword("Senha@123");
+        request.setNewPassword("NovaSenha@456");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Senha@123", "encoded_password")).thenReturn(true);
+        when(passwordEncoder.matches("NovaSenha@456", "encoded_password")).thenReturn(false);
+        when(passwordEncoder.encode("NovaSenha@456")).thenReturn("new_encoded_password");
+
+        authService.changePassword("gustavo@fincore.com", request);
+
+        verify(userRepository).save(user);
+        assertThat(user.getPassword()).isEqualTo("new_encoded_password");
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar alteração de senha com senha atual incorreta")
+    void changePassword_wrongCurrentPassword_throwsException() {
+        ChangePasswordRequest request = new ChangePasswordRequest();
+        request.setCurrentPassword("Errada@123");
+        request.setNewPassword("NovaSenha@456");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Errada@123", "encoded_password")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.changePassword("gustavo@fincore.com", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Senha atual incorreta");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    // ==================== PIN DE TRANSAÇÃO ====================
+
+    @Test
+    @DisplayName("Deve alterar PIN de transação com a senha de acesso correta")
+    void changeTransactionPin_success() {
+        ChangeTransactionPinRequest request = new ChangeTransactionPinRequest();
+        request.setCurrentPassword("Senha@123");
+        request.setNewPin("9876");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Senha@123", "encoded_password")).thenReturn(true);
+        when(passwordEncoder.matches("9876", "encoded_pin")).thenReturn(false);
+        when(passwordEncoder.encode("9876")).thenReturn("new_encoded_pin");
+
+        authService.changeTransactionPin("gustavo@fincore.com", request);
+
+        verify(userRepository).save(user);
+        assertThat(user.getTransactionPin()).isEqualTo("new_encoded_pin");
+    }
+
+    @Test
+    @DisplayName("Deve impedir novo PIN igual ao atual")
+    void changeTransactionPin_samePin_throwsException() {
+        ChangeTransactionPinRequest request = new ChangeTransactionPinRequest();
+        request.setCurrentPassword("Senha@123");
+        request.setNewPin("1234");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Senha@123", "encoded_password")).thenReturn(true);
+        when(passwordEncoder.matches("1234", "encoded_pin")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.changeTransactionPin("gustavo@fincore.com", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Novo PIN deve ser diferente do PIN atual");
+    }
+
+    @Test
+    @DisplayName("Deve validar PIN de transação correto")
+    void validateTransactionPin_success() {
+        ValidateTransactionPinRequest request = new ValidateTransactionPinRequest();
+        request.setPin("1234");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("1234", "encoded_pin")).thenReturn(true);
+
+        authService.validateTransactionPin("gustavo@fincore.com", request);
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar PIN de transação incorreto")
+    void validateTransactionPin_invalid_throwsException() {
+        ValidateTransactionPinRequest request = new ValidateTransactionPinRequest();
+        request.setPin("0000");
+
+        when(userRepository.findByEmail("gustavo@fincore.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("0000", "encoded_pin")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.validateTransactionPin("gustavo@fincore.com", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("PIN de transação inválido");
     }
 }

@@ -49,11 +49,11 @@ create_user() {
   fi
 }
 
-create_user auth_user         "$PG_PASS" 20
-create_user account_user      "$PG_PASS" 20
-create_user txn_user          "$PG_PASS" 20
-create_user notification_user "$PG_PASS" 10
-create_user fraud_user        "$PG_PASS" 10
+create_user auth_user         "${AUTH_DB_PASSWORD:-$PG_PASS}" 20
+create_user account_user      "${ACCOUNT_DB_PASSWORD:-$PG_PASS}" 20
+create_user txn_user          "${TXN_DB_PASSWORD:-$PG_PASS}" 20
+create_user notification_user "${NOTIFICATION_DB_PASSWORD:-$PG_PASS}" 10
+create_user fraud_user        "${FRAUD_DB_PASSWORD:-$PG_PASS}" 10
 
 # ── GRANT CONNECT ────────────────────────────────────────────
 declare -A DB_USER=(

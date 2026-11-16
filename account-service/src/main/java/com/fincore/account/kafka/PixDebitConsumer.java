@@ -21,11 +21,13 @@ public class PixDebitConsumer {
         log.info("Processando débito PIX: {} | R$ {} | conta: {}",
                 event.getTransactionId(), event.getAmount(), event.getSenderAccountId());
         try {
-            accountService.debitForPix(
+            Long receiverAccountId = accountService.transferForPix(
                     event.getSenderAccountId(),
                     event.getAmount(),
                     event.getTransactionId(),
-                    event.getReceiverKey());
+                    event.getReceiverKey(),
+                    event.getSenderEmail());
+            event.setReceiverAccountId(receiverAccountId);
             resultProducer.publishDebitConfirmed(event);
         } catch (BusinessException e) {
             log.error("Débito PIX rejeitado: {} — {}", event.getTransactionId(), e.getMessage());

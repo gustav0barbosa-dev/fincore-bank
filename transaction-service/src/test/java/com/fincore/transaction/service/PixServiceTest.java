@@ -3,6 +3,7 @@ package com.fincore.transaction.service;
 import com.fincore.transaction.dto.PixEvent;
 import com.fincore.transaction.dto.PixRequest;
 import com.fincore.transaction.dto.PixResponse;
+import com.fincore.transaction.client.AuthServiceClient;
 import com.fincore.transaction.exception.BusinessException;
 import com.fincore.transaction.kafka.PixEventProducer;
 import com.fincore.transaction.model.PixStatus;
@@ -41,6 +42,9 @@ class PixServiceTest {
     @Mock
     private PixEventProducer pixEventProducer;
 
+    @Mock
+    private AuthServiceClient authServiceClient;
+
     @InjectMocks
     private PixService pixService;
 
@@ -70,6 +74,7 @@ class PixServiceTest {
         pixRequest.setReceiverKey("maria@fincore.com");
         pixRequest.setAmount(new BigDecimal("100.00"));
         pixRequest.setDescription("Teste PIX");
+        pixRequest.setTransactionPin("1234");
     }
 
     // ==================== INITIATE PIX ====================
@@ -83,9 +88,23 @@ class PixServiceTest {
         PixResponse response = pixService.initiatePix(pixRequest);
 
         assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo(PixStatus.PENDING);
+        assertThat(response.getStatus()).isEqualTo(PixStatus.PENDING.name());
+        verify(authServiceClient).validateTransactionPin("1234");
         verify(pixTransactionRepository).save(any(PixTransaction.class));
         verify(pixEventProducer).publishPixInitiated(any(PixEvent.class));
+    }
+
+    @Test
+    @DisplayName("Não deve criar PIX quando o PIN de transação for rejeitado")
+    void initiatePix_invalidPin_doesNotCreateTransaction() {
+        doThrow(new BusinessException("PIN de transação inválido"))
+                .when(authServiceClient).validateTransactionPin("1234");
+
+        assertThatThrownBy(() -> pixService.initiatePix(pixRequest))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("PIN de transação inválido");
+
+        verifyNoInteractions(pixTransactionRepository, pixEventProducer);
     }
 
     @Test
@@ -95,7 +114,7 @@ class PixServiceTest {
 
         PixResponse response = pixService.initiatePix(pixRequest);
 
-        assertThat(response.getStatus()).isEqualTo(PixStatus.PENDING);
+        assertThat(response.getStatus()).isEqualTo(PixStatus.PENDING.name());
     }
 
     @Test
@@ -139,6 +158,7 @@ class PixServiceTest {
     @Test
     @DisplayName("Deve buscar transação por ID com sucesso")
     void getTransaction_success() {
+        pixTransaction.setReceiverAccountId(2L);
         when(pixTransactionRepository.findByTransactionId("txn-123"))
                 .thenReturn(Optional.of(pixTransaction));
 
@@ -146,6 +166,7 @@ class PixServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.getTransactionId()).isEqualTo("txn-123");
+        assertThat(response.getReceiverAccountId()).isEqualTo(2L);
     }
 
     @Test

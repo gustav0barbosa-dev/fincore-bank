@@ -12,6 +12,7 @@ public class PixResponse {
     private String transactionId;
     private Long senderAccountId;
     private String receiverKey;
+    private Long receiverAccountId;
     private BigDecimal amount;
     private String description;
     private String status;
@@ -24,6 +25,7 @@ public class PixResponse {
                 .transactionId(t.getTransactionId())
                 .senderAccountId(t.getSenderAccountId())
                 .receiverKey(t.getReceiverKey())
+                .receiverAccountId(t.getReceiverAccountId())
                 .amount(t.getAmount())
                 .description(t.getDescription())
                 .status(t.getStatus().name())

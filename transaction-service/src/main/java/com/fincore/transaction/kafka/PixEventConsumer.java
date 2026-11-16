@@ -69,8 +69,9 @@ public class PixEventConsumer {
 
         pixTransactionRepository.findByTransactionId(event.getTransactionId())
                 .ifPresentOrElse(txn -> {
-                    if (txn.getStatus() == PixStatus.COMPLETED) {
-                        log.warn("PIX {} já concluído, ignorando confirmação duplicada", event.getTransactionId());
+                    if (txn.getStatus() == PixStatus.COMPLETED || txn.getStatus() == PixStatus.FAILED) {
+                        log.warn("PIX {} já está em estado final ({}), ignorando confirmação",
+                                event.getTransactionId(), txn.getStatus());
                         return;
                     }
                     txn.setStatus(PixStatus.COMPLETED);
@@ -92,8 +93,9 @@ public class PixEventConsumer {
 
         pixTransactionRepository.findByTransactionId(event.getTransactionId())
                 .ifPresentOrElse(txn -> {
-                    if (txn.getStatus() == PixStatus.FAILED) {
-                        log.warn("PIX {} já falhou, ignorando falha duplicada", event.getTransactionId());
+                    if (txn.getStatus() == PixStatus.FAILED || txn.getStatus() == PixStatus.COMPLETED) {
+                        log.warn("PIX {} já está em estado final ({}), ignorando falha",
+                                event.getTransactionId(), txn.getStatus());
                         return;
                     }
                     txn.setStatus(PixStatus.FAILED);

@@ -6,12 +6,14 @@ import com.fincore.account.dto.DepositRequest;
 import com.fincore.account.exception.BusinessException;
 import com.fincore.account.model.*;
 import com.fincore.account.repository.AccountRepository;
+import com.fincore.account.repository.PixKeyRepository;
 import com.fincore.account.repository.TransactionRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,6 +40,9 @@ class AccountServiceTest {
 
     @Mock
     private TransactionRepository transactionRepository;
+
+    @Mock
+    private PixKeyRepository pixKeyRepository;
 
     @InjectMocks
     private AccountService accountService;
@@ -95,7 +100,7 @@ class AccountServiceTest {
 
         AccountResponse response = accountService.createAccount(createRequest);
 
-        assertThat(response.getAccountType()).isEqualTo(AccountType.CHECKING);
+        assertThat(response.getAccountType()).isEqualTo(AccountType.CHECKING.name());
     }
 
     // ==================== GET ACCOUNT ====================
@@ -233,5 +238,134 @@ class AccountServiceTest {
 
         assertThatThrownBy(() -> accountService.deposit(1L, depositRequest, OWNER_EMAIL))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    // ==================== TRANSFERÊNCIA PIX ====================
+
+    @Test
+    @DisplayName("Deve debitar remetente e creditar destinatário na transferência PIX")
+    void transferForPix_success() {
+        Account receiver = receiverAccount();
+        PixKey pixKey = PixKey.builder().keyValue("maria@fincore.com").account(receiver).build();
+
+        account.setBalance(new BigDecimal("1000.00"));
+        receiver.setBalance(new BigDecimal("100.00"));
+
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+        when(transactionRepository.existsByTransactionId("pix-1")).thenReturn(false);
+        when(pixKeyRepository.findByKeyValue("maria@fincore.com")).thenReturn(Optional.of(pixKey));
+        when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Long receiverAccountId = accountService.transferForPix(
+                1L, new BigDecimal("250.00"), "pix-1", "maria@fincore.com", OWNER_EMAIL);
+
+        assertThat(receiverAccountId).isEqualTo(2L);
+        assertThat(account.getBalance()).isEqualByComparingTo("750.00");
+        assertThat(receiver.getBalance()).isEqualByComparingTo("350.00");
+
+        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactionRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(Transaction::getType)
+                .containsExactlyInAnyOrder(TransactionType.PIX_OUT, TransactionType.PIX_IN);
+    }
+
+    @Test
+    @DisplayName("Deve ser idempotente em reentrega do Kafka")
+    void transferForPix_duplicateDelivery_doesNotTransferAgain() {
+        Account receiver = receiverAccount();
+        PixKey pixKey = PixKey.builder().keyValue("maria@fincore.com").account(receiver).build();
+
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+        when(transactionRepository.existsByTransactionId("pix-1")).thenReturn(true);
+        when(pixKeyRepository.findByKeyValue("maria@fincore.com")).thenReturn(Optional.of(pixKey));
+
+        Long receiverAccountId = accountService.transferForPix(
+                1L, new BigDecimal("250.00"), "pix-1", "maria@fincore.com", OWNER_EMAIL);
+
+        assertThat(receiverAccountId).isEqualTo(2L);
+        verify(accountRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar PIX sem saldo suficiente")
+    void transferForPix_insufficientBalance_throwsException() {
+        Account receiver = receiverAccount();
+        PixKey pixKey = PixKey.builder().keyValue("maria@fincore.com").account(receiver).build();
+
+        account.setBalance(new BigDecimal("50.00"));
+
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+        when(transactionRepository.existsByTransactionId("pix-1")).thenReturn(false);
+        when(pixKeyRepository.findByKeyValue("maria@fincore.com")).thenReturn(Optional.of(pixKey));
+
+        assertThatThrownBy(() -> accountService.transferForPix(
+                1L, new BigDecimal("250.00"), "pix-1", "maria@fincore.com", OWNER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Saldo insuficiente para PIX");
+
+        verify(accountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar PIX para a mesma conta")
+    void transferForPix_sameAccount_throwsException() {
+        PixKey pixKey = PixKey.builder().keyValue("gustavo@fincore.com").account(account).build();
+
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+        when(transactionRepository.existsByTransactionId("pix-1")).thenReturn(false);
+        when(pixKeyRepository.findByKeyValue("gustavo@fincore.com")).thenReturn(Optional.of(pixKey));
+
+        assertThatThrownBy(() -> accountService.transferForPix(
+                1L, new BigDecimal("10.00"), "pix-1", "gustavo@fincore.com", OWNER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("mesma conta");
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar PIX quando chave do destinatário não existe")
+    void transferForPix_receiverKeyNotFound_throwsException() {
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+        when(transactionRepository.existsByTransactionId("pix-1")).thenReturn(false);
+        when(pixKeyRepository.findByKeyValue("naoexiste@fincore.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountService.transferForPix(
+                1L, new BigDecimal("10.00"), "pix-1", "naoexiste@fincore.com", OWNER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Chave PIX não encontrada");
+    }
+
+    @Test
+    @DisplayName("Deve negar PIX quando conta remetente não pertence ao usuário")
+    void transferForPix_accessDenied_throwsException() {
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+        assertThatThrownBy(() -> accountService.transferForPix(
+                1L, new BigDecimal("10.00"), "pix-1", "maria@fincore.com", OTHER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("não pertence");
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar PIX com valor inválido")
+    void transferForPix_invalidAmount_throwsException() {
+        assertThatThrownBy(() -> accountService.transferForPix(
+                1L, BigDecimal.ZERO, "pix-1", "maria@fincore.com", OWNER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Valor inválido");
+    }
+
+    private Account receiverAccount() {
+        return Account.builder()
+                .id(2L)
+                .accountNumber("87654321")
+                .agency("0001")
+                .ownerEmail("maria@fincore.com")
+                .ownerName("Maria Souza")
+                .balance(BigDecimal.ZERO)
+                .accountType(AccountType.CHECKING)
+                .status(AccountStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .build();
     }
 }

@@ -15,6 +15,7 @@ target/
 *.jar
 *.war
 *.class
+fincore-frontend/dist/
 
 # IDE
 .idea/
@@ -32,3 +33,6 @@ pg_log/
 # OS
 .DS_Store
 Thumbs.db
+
+# Ferramentas locais (PostgreSQL/pgAdmin usados apenas em testes)
+.tools/

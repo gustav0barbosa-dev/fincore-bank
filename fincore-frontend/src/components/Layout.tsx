@@ -1,12 +1,13 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Home, Send, ArrowDownToLine, FileText, LogOut, Landmark } from 'lucide-react';
+import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
+import { Home, Send, ArrowDownToLine, FileText, LogOut, Landmark, KeyRound, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV = [
-  { to: '/',           icon: Home,            label: 'Dashboard' },
-  { to: '/pix',        icon: Send,            label: 'PIX'       },
-  { to: '/deposit',    icon: ArrowDownToLine, label: 'Depósito'  },
-  { to: '/statement',  icon: FileText,        label: 'Extrato'   },
+  { to: '/',           icon: Home,            label: 'Dashboard',  mobileLabel: 'Início'   },
+  { to: '/pix',        icon: Send,            label: 'PIX',        mobileLabel: 'PIX'      },
+  { to: '/pix-keys',   icon: KeyRound,        label: 'Chaves PIX', mobileLabel: 'Chaves'   },
+  { to: '/deposit',    icon: ArrowDownToLine, label: 'Depósito',   mobileLabel: 'Depósito' },
+  { to: '/statement',  icon: FileText,        label: 'Extrato',    mobileLabel: 'Extrato'  },
 ];
 
 export default function Layout() {
@@ -48,15 +49,24 @@ export default function Layout() {
 
         {/* User + logout */}
         <div className="border-t border-[#1e1e2e] pt-4 space-y-1">
-          <div className="flex items-center gap-3 px-3 py-2">
+          <NavLink
+            to="/profile"
+            title="Meu perfil"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                isActive ? 'bg-indigo-500/10' : 'hover:bg-white/5'
+              }`
+            }
+          >
             <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
               {initial}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-white text-sm font-medium truncate">{user?.fullName}</p>
               <p className="text-gray-500 text-xs truncate">{user?.email}</p>
             </div>
-          </div>
+            <ChevronRight size={14} className="text-gray-600 flex-shrink-0" />
+          </NavLink>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
@@ -77,9 +87,18 @@ export default function Layout() {
             </div>
             <span className="text-white font-bold">FinCore</span>
           </div>
-          <button onClick={handleLogout} className="text-gray-400 hover:text-red-400 transition-colors p-1">
-            <LogOut size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/profile"
+              title="Meu perfil"
+              className="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-bold"
+            >
+              {initial}
+            </Link>
+            <button onClick={handleLogout} className="text-gray-400 hover:text-red-400 transition-colors p-1">
+              <LogOut size={18} />
+            </button>
+          </div>
         </header>
 
         {/* Scrollable content */}
@@ -89,7 +108,7 @@ export default function Layout() {
 
         {/* Mobile bottom nav */}
         <nav className="md:hidden flex bg-[#12121a] border-t border-[#1e1e2e] flex-shrink-0">
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {NAV.map(({ to, icon: Icon, label, mobileLabel }) => (
             <NavLink
               key={to}
               to={to}
@@ -101,7 +120,7 @@ export default function Layout() {
               }
             >
               <Icon size={19} />
-              {label}
+              {mobileLabel}
             </NavLink>
           ))}
         </nav>

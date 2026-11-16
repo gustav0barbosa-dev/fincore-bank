@@ -16,7 +16,7 @@ export default function Login() {
   const mutation = useMutation({
     mutationFn: () => login(email, password),
     onSuccess: (data) => {
-      signIn(data.accessToken, { email: data.email, fullName: data.fullName, role: data.role });
+      signIn(data.accessToken, { email: data.email, fullName: data.fullName, role: data.role ?? 'USER' });
       navigate('/', { replace: true });
     },
     onError: () => toast.error('Email ou senha incorretos'),

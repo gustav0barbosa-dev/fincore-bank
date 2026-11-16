@@ -112,15 +112,18 @@ docker compose up -d postgres zookeeper kafka
 docker compose ps
 ```
 
-O PostgreSQL já executa o script `docker/postgres/init/01_init_databases.sql` que cria automaticamente os 5 bancos:
+O PostgreSQL já executa o script `docker/postgres/init/01_init_databases.sh` (+ `02_auth_permissions.sql`) que cria automaticamente os 5 bancos e os usuários de serviço:
 
 ```
-fincore_auth        → auth-service
-fincore_account     → account-service
-fincore_txn         → transaction-service
-fincore_notification → notification-service
-fincore_fraud       → fraud-service
+fincore_auth        → auth-service        (auth_user)
+fincore_account     → account-service     (account_user)
+fincore_txn         → transaction-service (txn_user)
+fincore_notification → notification-service (notification_user)
+fincore_fraud       → fraud-service       (fraud_user)
 ```
+
+> Os nomes de usuário são fixos; as senhas vêm de `<SERVICO>_DB_PASSWORD` no `.env`
+> (fallback: `POSTGRES_PASSWORD`). Mantenha-as iguais às usadas pelos serviços.
 
 > **Aguarde ~20 segundos** até o health check do PostgreSQL ficar `healthy` antes de iniciar os serviços.
 
@@ -220,11 +223,14 @@ curl -X POST http://localhost:8081/api/v1/auth/register \
     "fullName": "João Silva",
     "email": "joao@fincore.com",
     "password": "Senha@123",
-    "cpf": "12345678901"
+    "cpf": "52998224725",
+    "phone": "11987654321",
+    "transactionPin": "1234"
   }'
 ```
 
-Guarde o `accessToken` da resposta.
+Guarde o `accessToken` da resposta. O CPF precisa ser válido, a senha deve atender à
+política de senha forte e o `transactionPin` deve ter exatamente 4 dígitos.
 
 ### 7.2 Crie uma conta bancária
 
@@ -252,23 +258,110 @@ curl -X POST http://localhost:8082/api/v1/accounts/$ACCOUNT_ID/deposit \
   -d '{"amount": 500.00, "description": "Depósito inicial"}'
 ```
 
-### 7.4 Inicie um PIX
+### 7.4 Cadastre uma chave PIX
 
 ```bash
-curl -X POST http://localhost:8083/api/v1/pix \
+curl -X POST http://localhost:8082/api/v1/pix-keys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "accountId": '"$ACCOUNT_ID"',
+    "keyType": "EMAIL",
+    "keyValue": "joao@fincore.com"
+  }'
+```
+
+Tipos aceitos: `CPF`, `EMAIL`, `PHONE` e `RANDOM`. Para transferir, a chave do
+destinatário também precisa estar cadastrada.
+
+### 7.5 Inicie um PIX
+
+```bash
+curl -X POST http://localhost:8083/api/v1/transactions/pix \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
     "senderAccountId": '"$ACCOUNT_ID"',
     "receiverKey": "destino@email.com",
     "amount": 50.00,
-    "description": "Teste PIX"
+    "description": "Teste PIX",
+    "transactionPin": "1234"
   }'
+```
+
+O PIN é validado no auth-service antes de a transação ser criada. Consulte o resultado em
+`GET /api/v1/transactions/pix/{transactionId}`.
+
+### 7.6 Perfil e PIN de transação
+
+```bash
+# Consultar perfil
+curl http://localhost:8081/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
+
+# Atualizar nome/telefone
+curl -X PUT http://localhost:8081/api/v1/auth/profile \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"fullName": "João Silva", "phone": "11987654321"}'
+
+# Alterar senha
+curl -X PUT http://localhost:8081/api/v1/auth/password \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"currentPassword": "Senha@123", "newPassword": "NovaSenha@456"}'
+
+# Alterar PIN de transação
+curl -X PUT http://localhost:8081/api/v1/auth/transaction-pin \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"currentPassword": "Senha@123", "newPin": "4321"}'
 ```
 
 ---
 
-## 8. Swagger / Documentação da API
+## 7.7 Rodar os testes automatizados
+
+Os testes de auth-service e account-service usam PostgreSQL local (Flyway aplica as
+migrations). Defina as variáveis antes de executar:
+
+```bash
+export DB_USERNAME=postgres
+export DB_PASSWORD=<sua_senha>
+export JWT_SECRET=$(openssl rand -hex 32)
+
+cd auth-service && ./mvnw clean test
+cd ../account-service && ./mvnw clean test
+cd ../transaction-service && ./mvnw clean test
+```
+
+No Windows, use `.\mvnw.cmd clean test` e defina as variáveis com `$env:DB_USERNAME="postgres"`,
+por exemplo. O build do frontend é validado com `cd fincore-frontend && npm run build`.
+
+---
+
+## 8. Frontend (React + Vite)
+
+```bash
+cd fincore-frontend
+npm install
+npm run dev
+```
+
+Disponível em http://localhost:5173. O proxy do Vite encaminha `/auth`, `/account`
+e `/transaction` para os serviços nas portas 8081, 8082 e 8083.
+
+Fluxo sugerido no navegador:
+
+1. Crie uma conta em `/register` informando CPF válido, senha forte e PIN de 4 dígitos.
+2. Em **Chaves PIX**, cadastre ao menos uma chave para a sua conta.
+3. Use outra conta para enviar um PIX para essa chave; informe o PIN de transação.
+4. Acompanhe o resultado em **Extrato** (PIX enviado/recebido) e no histórico da página PIX.
+5. Em **Perfil** (avatar no topo ou bloco do usuário na sidebar), atualize seus dados,
+   troque a senha de acesso e o PIN de transação.
+
+---
+
+## 9. Swagger / Documentação da API
 
 Cada serviço expõe o Swagger UI:
 
@@ -282,7 +375,7 @@ Cada serviço expõe o Swagger UI:
 
 ---
 
-## 9. Parar tudo
+## 10. Parar tudo
 
 ```bash
 # Para os serviços Spring Boot: Ctrl+C em cada terminal

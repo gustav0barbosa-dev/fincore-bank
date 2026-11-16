@@ -1,0 +1,5 @@
+# Scripts shell precisam de LF para rodar dentro dos containers Linux
+*.sh text eol=lf
+
+# Wrappers Maven
+mvnw text eol=lf

@@ -5,13 +5,37 @@ export interface AuthResponse {
   expiresIn: number;
   email: string;
   fullName: string;
-  role: string;
+  role?: string;
 }
 
 export interface User {
   email: string;
   fullName: string;
   role: string;
+}
+
+export interface Profile {
+  id: number;
+  fullName: string;
+  email: string;
+  cpf: string | null;
+  phone: string | null;
+  role: string;
+  enabled: boolean;
+  transactionPinConfigured: boolean;
+  createdAt: string;
+}
+
+export type PixKeyType = 'CPF' | 'EMAIL' | 'PHONE' | 'RANDOM';
+
+export interface PixKey {
+  id: number;
+  keyType: PixKeyType;
+  keyValue: string;
+  accountId: number;
+  accountNumber: string;
+  ownerEmail: string;
+  createdAt: string;
 }
 
 export interface Account {

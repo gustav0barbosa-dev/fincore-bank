@@ -7,6 +7,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   signIn: (token: string, user: User) => void;
   signOut: () => void;
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -38,8 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateUser = (patch: Partial<User>) => {
+    setUser((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      localStorage.setItem('fincore_user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, signIn, signOut, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

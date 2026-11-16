@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, defs, linearGradient, stop,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Send, ArrowDownToLine, FileText, Eye, EyeOff, TrendingUp, Plus } from 'lucide-react';
+import { Send, ArrowDownToLine, FileText, Eye, EyeOff, TrendingUp, Plus, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getMyAccounts, createAccount, getStatement } from '../api/account';
 import { useAuth } from '../contexts/AuthContext';
@@ -129,11 +129,12 @@ export default function Dashboard() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { to: '/pix',       icon: Send,            label: 'PIX'      },
-          { to: '/deposit',   icon: ArrowDownToLine, label: 'Depósito' },
-          { to: '/statement', icon: FileText,        label: 'Extrato'  },
+          { to: '/pix',       icon: Send,            label: 'PIX'        },
+          { to: '/pix-keys',  icon: KeyRound,        label: 'Chaves PIX' },
+          { to: '/deposit',   icon: ArrowDownToLine, label: 'Depósito'   },
+          { to: '/statement', icon: FileText,        label: 'Extrato'    },
         ].map(({ to, icon: Icon, label }) => (
           <Link
             key={to}

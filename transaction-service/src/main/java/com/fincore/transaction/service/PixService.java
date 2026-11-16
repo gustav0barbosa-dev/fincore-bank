@@ -3,6 +3,7 @@ package com.fincore.transaction.service;
 import com.fincore.transaction.dto.PixEvent;
 import com.fincore.transaction.dto.PixRequest;
 import com.fincore.transaction.dto.PixResponse;
+import com.fincore.transaction.client.AuthServiceClient;
 import com.fincore.transaction.exception.BusinessException;
 import com.fincore.transaction.kafka.PixEventProducer;
 import com.fincore.transaction.model.PixStatus;
@@ -26,11 +27,15 @@ public class PixService {
 
     private final PixTransactionRepository pixTransactionRepository;
     private final PixEventProducer pixEventProducer;
+    private final AuthServiceClient authServiceClient;
 
     @Transactional
     public PixResponse initiatePix(PixRequest request) {
         String senderEmail = SecurityContextHolder.getContext()
                 .getAuthentication().getName();
+
+        // Autoriza a transação com o PIN de 4 dígitos mantido no auth-service
+        authServiceClient.validateTransactionPin(request.getTransactionPin());
 
         // Cria registro da transação
         PixTransaction txn = PixTransaction.builder()

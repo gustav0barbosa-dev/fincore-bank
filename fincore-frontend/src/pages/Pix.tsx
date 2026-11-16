@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Send, Clock, CheckCircle, XCircle, AlertCircle, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getMyAccounts } from '../api/account';
 import { sendPix, getPixHistory } from '../api/transaction';
 import { TransactionSkeleton } from '../components/Skeleton';
 import { PixTransaction } from '../types';
+import { apiErrorMessage } from '../utils/errors';
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -27,6 +29,7 @@ export default function Pix() {
   const [key, setKey]   = useState('');
   const [amt, setAmt]   = useState('');
   const [desc, setDesc] = useState('');
+  const [pin, setPin]   = useState('');
   const qc = useQueryClient();
 
   const { data: accounts } = useQuery({ queryKey: ['accounts'], queryFn: getMyAccounts });
@@ -39,16 +42,16 @@ export default function Pix() {
   });
 
   const mutation = useMutation({
-    mutationFn: () => sendPix(account!.id, key.trim(), parseFloat(amt), desc || undefined),
+    mutationFn: () => sendPix(account!.id, key.trim(), parseFloat(amt), pin, desc || undefined),
     onSuccess: () => {
       toast.success('PIX enviado! Aguarde a confirmação.');
-      setKey(''); setAmt(''); setDesc('');
+      setKey(''); setAmt(''); setDesc(''); setPin('');
       qc.invalidateQueries({ queryKey: ['pix-history'] });
       qc.invalidateQueries({ queryKey: ['statement'] });
       qc.invalidateQueries({ queryKey: ['accounts'] });
     },
-    onError: (err: any) =>
-      toast.error(err?.response?.data?.message ?? 'Erro ao enviar PIX'),
+    onError: (err) =>
+      toast.error(apiErrorMessage(err, 'Erro ao enviar PIX')),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -56,14 +59,24 @@ export default function Pix() {
     if (!key.trim()) return toast.error('Informe a chave PIX');
     const v = parseFloat(amt);
     if (!v || v <= 0) return toast.error('Valor inválido');
+    if (!/^\d{4}$/.test(pin)) return toast.error('Informe a senha de transação de 4 dígitos');
     mutation.mutate();
   };
 
   return (
     <div className="space-y-6 max-w-xl animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Transferir via PIX</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Envio instantâneo, 24h por dia</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Transferir via PIX</h1>
+          <p className="text-gray-500 text-sm mt-0.5">Envio instantâneo, 24h por dia</p>
+        </div>
+        <Link
+          to="/pix-keys"
+          className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 text-xs font-medium bg-indigo-500/10 hover:bg-indigo-500/15 px-3 py-2 rounded-xl transition-colors flex-shrink-0"
+        >
+          <KeyRound size={13} />
+          Minhas chaves
+        </Link>
       </div>
 
       {/* Form */}
@@ -81,6 +94,9 @@ export default function Pix() {
           </label>
           <input value={key} onChange={e => setKey(e.target.value)} required
             placeholder="Email, CPF, telefone ou chave aleatória" className={inputCls} />
+          <p className="text-gray-600 text-xs mt-1.5">
+            A chave precisa estar cadastrada no FinCore pelo destinatário.
+          </p>
         </div>
 
         <div>
@@ -97,6 +113,30 @@ export default function Pix() {
           </label>
           <input value={desc} onChange={e => setDesc(e.target.value)}
             placeholder="Para que é esse PIX?" className={inputCls} />
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs font-medium block mb-1.5 uppercase tracking-wide">
+            Senha de transação
+          </label>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            required
+            pattern="[0-9]{4}"
+            maxLength={4}
+            placeholder="4 dígitos"
+            className={inputCls}
+          />
+          <p className="text-gray-600 text-xs mt-1.5">
+            PIN cadastrado no seu{' '}
+            <Link to="/profile" className="text-indigo-400 hover:text-indigo-300 transition-colors">
+              perfil
+            </Link>
+            , usado para autorizar esta transferência.
+          </p>
         </div>
 
         {/* Quick amounts */}

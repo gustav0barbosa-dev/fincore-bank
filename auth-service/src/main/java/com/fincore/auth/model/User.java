@@ -35,6 +35,12 @@ public class User implements UserDetails {
     @Column(unique = true)
     private String cpf;
 
+    @Column(length = 20)
+    private String phone;
+
+    @Column(name = "transaction_pin")
+    private String transactionPin;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
