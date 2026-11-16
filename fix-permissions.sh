@@ -13,7 +13,10 @@
 # ============================================================
 set -e
 
-PG_ADMIN="fincore_admin"
+# Usa o mesmo superusuário configurado no container (POSTGRES_USER),
+# em vez de assumir um nome fixo como "fincore_admin".
+PG_ADMIN="$(docker exec fincore-postgres printenv POSTGRES_USER 2>/dev/null || true)"
+PG_ADMIN="${PG_ADMIN:-postgres}"
 
 fix_database() {
   local db="$1"

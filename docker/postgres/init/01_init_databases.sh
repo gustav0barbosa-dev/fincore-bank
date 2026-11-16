@@ -15,8 +15,10 @@ psql_c() { psql -v ON_ERROR_STOP=1 --username "$PG_USER" -d postgres -c "$1" -q;
 psql_t() { psql -v ON_ERROR_STOP=1 --username "$PG_USER" -d postgres -tAc "$1"; }
 
 # ── Atualiza senha do admin ──────────────────────────────────
-log "Configurando fincore_admin..."
-psql_c "ALTER USER fincore_admin WITH PASSWORD '${PG_PASS}';"
+# O superusuário é o definido em POSTGRES_USER (não um nome fixo),
+# pois é esse role que o entrypoint do Postgres cria via initdb.
+log "Configurando superusuário '${PG_USER}'..."
+psql_c "ALTER USER \"${PG_USER}\" WITH PASSWORD '${PG_PASS}';"
 
 # ── Cria banco se não existir ────────────────────────────────
 create_db() {
@@ -30,11 +32,11 @@ create_db() {
   fi
 }
 
-create_db fincore_auth         fincore_admin
-create_db fincore_account      fincore_admin
-create_db fincore_txn          fincore_admin
-create_db fincore_notification fincore_admin
-create_db fincore_fraud        fincore_admin
+create_db fincore_auth         "$PG_USER"
+create_db fincore_account      "$PG_USER"
+create_db fincore_txn          "$PG_USER"
+create_db fincore_notification "$PG_USER"
+create_db fincore_fraud        "$PG_USER"
 
 # ── Cria usuário de serviço se não existir ───────────────────
 create_user() {
