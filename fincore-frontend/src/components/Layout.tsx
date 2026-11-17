@@ -152,7 +152,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="w-full flex-1 px-4 py-6 pb-8 sm:px-6 md:px-8 md:py-8">
+        <main className="w-full flex-1 px-4 py-6 pb-24 sm:px-6 md:px-8 md:py-8 md:pb-8">
           <div className="mx-auto w-full max-w-[1440px] animate-fade-in">
             <Outlet />
           </div>
